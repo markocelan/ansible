@@ -81,7 +81,8 @@ commands:
 import re
 
 from ansible.module_utils.network.nxos.nxos import load_config, run_commands
-from ansible.module_utils.network.nxos.nxos import nxos_argument_spec, check_args
+from ansible.module_utils.network.nxos.nxos import get_capabilities, nxos_argument_spec
+from ansible.module_utils.network.nxos.nxos import get_interface_type
 from ansible.module_utils.basic import AnsibleModule
 
 
@@ -95,23 +96,6 @@ def execute_show_command(command, module):
         'output': output,
     }]
     return run_commands(module, cmds)[0]
-
-
-def get_interface_type(interface):
-    if interface.upper().startswith('ET'):
-        return 'ethernet'
-    elif interface.upper().startswith('VL'):
-        return 'svi'
-    elif interface.upper().startswith('LO'):
-        return 'loopback'
-    elif interface.upper().startswith('MG'):
-        return 'management'
-    elif interface.upper().startswith('MA'):
-        return 'management'
-    elif interface.upper().startswith('PO'):
-        return 'portchannel'
-    else:
-        return 'unknown'
 
 
 def get_interface_mode(interface, intf_type, module):
@@ -199,12 +183,14 @@ def main():
     module = AnsibleModule(argument_spec=argument_spec, supports_check_mode=True)
 
     warnings = list()
-    check_args(module, warnings)
     results = {'changed': False, 'commands': [], 'warnings': warnings}
 
     vrf = module.params['vrf']
     interface = module.params['interface'].lower()
     state = module.params['state']
+
+    device_info = get_capabilities(module)
+    network_api = device_info.get('network_api', 'nxapi')
 
     current_vrfs = get_vrf_list(module)
     if vrf not in current_vrfs:
@@ -212,7 +198,7 @@ def main():
                         "Use nxos_vrf to fix this.")
 
     intf_type = get_interface_type(interface)
-    if (intf_type != 'ethernet' and module.params['provider']['transport'] == 'cli'):
+    if (intf_type != 'ethernet' and network_api == 'cliconf'):
         if is_default(interface, module) == 'DNE':
             module.fail_json(msg="interface does not exist on switch. Verify "
                                  "switch platform or create it first with "

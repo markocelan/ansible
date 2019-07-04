@@ -28,13 +28,11 @@ short_description: Manages SNMP traps configuration on HUAWEI CloudEngine switch
 description:
     - Manages SNMP traps configurations on HUAWEI CloudEngine switches.
 author:
-    - wangdezhuang (@CloudEngine-Ansible)
+    - wangdezhuang (@QijunPan)
 options:
     feature_name:
         description:
             - Alarm feature name.
-        required: false
-        default: null
         choices: ['aaa', 'arp', 'bfd', 'bgp', 'cfg', 'configuration', 'dad', 'devm',
                  'dhcpsnp', 'dldp', 'driver', 'efm', 'erps', 'error-down', 'fcoe',
                  'fei', 'fei_comm', 'fm', 'ifnet', 'info', 'ipsg', 'ipv6', 'isis',
@@ -47,25 +45,17 @@ options:
     trap_name:
         description:
             - Alarm trap name.
-        required: false
-        default: null
     interface_type:
         description:
             - Interface type.
-        required: false
-        default: null
         choices: ['Ethernet', 'Eth-Trunk', 'Tunnel', 'NULL', 'LoopBack', 'Vlanif', '100GE',
                  '40GE', 'MTunnel', '10GE', 'GE', 'MEth', 'Vbdif', 'Nve']
     interface_number:
         description:
             - Interface number.
-        required: false
-        default: null
     port_number:
         description:
             - Source port number.
-        required: false
-        default: null
 '''
 
 EXAMPLES = '''
@@ -108,7 +98,7 @@ RETURN = '''
 changed:
     description: check to see if a change was made on the device
     returned: always
-    type: boolean
+    type: bool
     sample: true
 proposed:
     description: k/v pairs of parameters passed into module
@@ -138,6 +128,7 @@ updates:
 
 from ansible.module_utils.basic import AnsibleModule
 from ansible.module_utils.network.cloudengine.ce import get_config, load_config, ce_argument_spec, run_commands
+from ansible.module_utils.connection import exec_command
 
 
 class SnmpTraps(object):
@@ -184,6 +175,22 @@ class SnmpTraps(object):
         cmd1 = 'display interface brief'
         commands.append(cmd1)
         self.interface = run_commands(self.module, commands)
+
+    def get_config(self, flags=None):
+        """Retrieves the current config from the device or cache
+        """
+        flags = [] if flags is None else flags
+
+        cmd = 'display current-configuration '
+        cmd += ' '.join(flags)
+        cmd = cmd.strip()
+
+        rc, out, err = exec_command(self.module, cmd)
+        if rc != 0:
+            self.module.fail_json(msg=err)
+        cfg = str(out).strip()
+
+        return cfg
 
     def check_args(self):
         """ Check invalid args """
@@ -314,7 +321,7 @@ class SnmpTraps(object):
         regular = "| include snmp | include trap"
         flags = list()
         flags.append(regular)
-        tmp_cfg = get_config(self.module, flags)
+        tmp_cfg = self.get_config(flags)
 
         return tmp_cfg
 

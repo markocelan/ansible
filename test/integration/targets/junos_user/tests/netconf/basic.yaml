@@ -1,5 +1,5 @@
 ---
-- debug: msg="START junos_user netconf/basic.yaml"
+- debug: msg="START junos_user netconf/basic.yaml on connection={{ ansible_connection }}"
 
 - name: setup - remove user
   junos_user:
@@ -172,7 +172,8 @@
 - name: Create list of users
   junos_user:
     aggregate:
-      - name: ansible
+      # NOTE(pabelanger): We noop our ansible-test user, as not to lose SSH access
+      - name: "{{ ansible_user|default('ansible') }}"
       - {name: test_user1, full_name: test_user2, role: operator}
       - {name: test_user2, full_name: test_user2, role: read-only}
     provider: "{{ netconf }}"
@@ -181,7 +182,8 @@
 - name: Purge users except the users in aggregate
   junos_user:
     aggregate:
-      - name: ansible
+      # NOTE(pabelanger): We noop our ansible-test user, as not to lose SSH access
+      - name: "{{ ansible_user|default('ansible') }}"
     purge: True
     provider: "{{ netconf }}"
   register: result
@@ -191,3 +193,5 @@
       - "result.changed == true"
       - result.diff.prepared is search("\- *user test_user1")
       - result.diff.prepared is search("\- *user test_user2")
+
+- debug: msg="END junos_user netconf/basic.yaml on connection={{ ansible_connection }}"

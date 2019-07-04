@@ -27,70 +27,56 @@ description:
 options:
    name:
      description:
-        - Name that has to be given to the image
+        - The name of the image when uploading - or the name/ID of the image if deleting
      required: true
-     default: None
    id:
      version_added: "2.4"
      description:
-        - The Id of the image
-     required: false
-     default: None
+        - The ID of the image when uploading an image
    checksum:
      version_added: "2.5"
      description:
         - The checksum of the image
-     required: false
-     default: None
    disk_format:
      description:
         - The format of the disk that is getting uploaded
-     required: false
      default: qcow2
    container_format:
      description:
         - The format of the container
-     required: false
      default: bare
    owner:
      description:
         - The owner of the image
-     required: false
-     default: None
    min_disk:
      description:
         - The minimum disk space (in GB) required to boot this image
-     required: false
-     default: None
    min_ram:
      description:
         - The minimum ram (in MB) required to boot this image
-     required: false
-     default: None
    is_public:
      description:
         - Whether the image can be accessed publicly. Note that publicizing an image requires admin role by default.
-     required: false
+     type: bool
      default: 'yes'
+   protected:
+     version_added: "2.9"
+     description:
+        - Prevent image from being deleted
+     type: bool
+     default: 'no'
    filename:
      description:
         - The path to the file which has to be uploaded
-     required: false
-     default: None
    ramdisk:
      description:
         - The name of an existing ramdisk image that will be associated with this image
-     required: false
-     default: None
    kernel:
      description:
         - The name of an existing kernel image that will be associated with this image
-     required: false
-     default: None
    properties:
      description:
         - Additional properties to be associated with this image
-     required: false
      default: {}
    state:
      description:
@@ -100,18 +86,19 @@ options:
    availability_zone:
      description:
        - Ignored. Present for backwards compatibility
-     required: false
-requirements: ["shade"]
+requirements: ["openstacksdk"]
 '''
 
 EXAMPLES = '''
 # Upload an image from a local file named cirros-0.3.0-x86_64-disk.img
 - os_image:
     auth:
-      auth_url: http://localhost/auth/v2.0
+      auth_url: https://identity.example.com
       username: admin
       password: passme
       project_name: admin
+      os_user_domain_name: Default
+      os_project_domain_name: Default
     name: cirros
     container_format: bare
     disk_format: qcow2
@@ -124,14 +111,8 @@ EXAMPLES = '''
       distro: ubuntu
 '''
 
-try:
-    import shade
-    HAS_SHADE = True
-except ImportError:
-    HAS_SHADE = False
-
 from ansible.module_utils.basic import AnsibleModule
-from ansible.module_utils.openstack import openstack_full_argument_spec, openstack_module_kwargs
+from ansible.module_utils.openstack import openstack_full_argument_spec, openstack_module_kwargs, openstack_cloud_from_module
 
 
 def main():
@@ -146,6 +127,7 @@ def main():
         min_disk=dict(type='int', default=0),
         min_ram=dict(type='int', default=0),
         is_public=dict(type='bool', default=False),
+        protected=dict(type='bool', default=False),
         filename=dict(default=None),
         ramdisk=dict(default=None),
         kernel=dict(default=None),
@@ -155,11 +137,8 @@ def main():
     module_kwargs = openstack_module_kwargs()
     module = AnsibleModule(argument_spec, **module_kwargs)
 
-    if not HAS_SHADE:
-        module.fail_json(msg='shade is required for this module')
-
+    sdk, cloud = openstack_cloud_from_module(module)
     try:
-        cloud = shade.openstack_cloud(**module.params)
 
         changed = False
         if module.params['checksum']:
@@ -180,6 +159,7 @@ def main():
                     wait=module.params['wait'],
                     timeout=module.params['timeout'],
                     is_public=module.params['is_public'],
+                    protected=module.params['protected'],
                     min_disk=module.params['min_disk'],
                     min_ram=module.params['min_ram'],
                     **kwargs
@@ -192,6 +172,7 @@ def main():
                 image=image,
                 kernel=module.params['kernel'],
                 ramdisk=module.params['ramdisk'],
+                protected=module.params['protected'],
                 **module.params['properties'])
             image = cloud.get_image(name_or_id=image.id)
             module.exit_json(changed=changed, image=image, id=image.id)
@@ -207,7 +188,7 @@ def main():
                 changed = True
             module.exit_json(changed=changed)
 
-    except shade.OpenStackCloudException as e:
+    except sdk.exceptions.OpenStackCloudException as e:
         module.fail_json(msg=str(e), extra_data=e.extra_data)
 
 

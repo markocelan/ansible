@@ -6,22 +6,11 @@
 #
 # module_check: not supported
 #
-# This file is part of Ansible
-#
-# Ansible is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# Ansible is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with Ansible.  If not, see <http://www.gnu.org/licenses/>.
+# Copyright: (c) 2017 Gaurav Rastogi, <grastogi@avinetworks.com>
+# GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 #
 """
+
 
 ANSIBLE_METADATA = {'metadata_version': '1.1',
                     'status': ['preview'],
@@ -31,7 +20,7 @@ ANSIBLE_METADATA = {'metadata_version': '1.1',
 DOCUMENTATION = '''
 ---
 module: avi_api_session
-author: Gaurav Rastogi (grastogi@avinetworks.com)
+author: Gaurav Rastogi (@grastogi23) <grastogi@avinetworks.com>
 
 short_description: Avi API Module
 description:
@@ -57,6 +46,7 @@ options:
     timeout:
         description:
             - Timeout (in seconds) for Avi API calls.
+        default: 60
 extends_documentation_fragment:
     - avi
 '''
@@ -119,6 +109,7 @@ obj:
     type: dict
 '''
 
+
 import json
 import time
 from ansible.module_utils.basic import AnsibleModule
@@ -126,9 +117,10 @@ from copy import deepcopy
 
 try:
     from ansible.module_utils.network.avi.avi import (
-        avi_common_argument_spec, ansible_return, HAS_AVI)
-    from avi.sdk.avi_api import ApiSession
-    from avi.sdk.utils.ansible_utils import avi_obj_cmp, cleanup_absent_fields
+        avi_common_argument_spec, ansible_return, avi_obj_cmp,
+        cleanup_absent_fields, HAS_AVI)
+    from ansible.module_utils.network.avi.avi_api import (
+        ApiSession, AviCredentials)
 except ImportError:
     HAS_AVI = False
 
@@ -145,25 +137,27 @@ def main():
     )
     argument_specs.update(avi_common_argument_spec())
     module = AnsibleModule(argument_spec=argument_specs)
-
     if not HAS_AVI:
         return module.fail_json(msg=(
-            'Avi python API SDK (avisdk) is not installed. '
+            'Avi python API SDK (avisdk>=17.1) or requests is not installed. '
             'For more details visit https://github.com/avinetworks/sdk.'))
-    tenant_uuid = module.params.get('tenant_uuid', None)
+    api_creds = AviCredentials()
+    api_creds.update_from_ansible_module(module)
     api = ApiSession.get_session(
-        module.params['controller'], module.params['username'],
-        module.params['password'], tenant=module.params['tenant'],
-        tenant_uuid=tenant_uuid)
+        api_creds.controller, api_creds.username, password=api_creds.password,
+        timeout=api_creds.timeout, tenant=api_creds.tenant,
+        tenant_uuid=api_creds.tenant_uuid, token=api_creds.token,
+        port=api_creds.port)
 
-    tenant = module.params.get('tenant', '')
+    tenant_uuid = api_creds.tenant_uuid
+    tenant = api_creds.tenant
     timeout = int(module.params.get('timeout'))
     # path is a required argument
     path = module.params.get('path', '')
     params = module.params.get('params', None)
     data = module.params.get('data', None)
     # Get the api_version from module.
-    api_version = module.params.get('api_version', '16.4')
+    api_version = api_creds.api_version
     if data is not None:
         data = json.loads(data)
     method = module.params['http_method']
@@ -173,27 +167,42 @@ def main():
     gparams = deepcopy(params) if params else {}
     gparams.update({'include_refs': '', 'include_name': ''})
 
-    if method == 'post':
+    # API methods not allowed
+    api_get_not_allowed = ["cluster", "gslbsiteops"]
+    api_post_not_allowed = ["alert", "fileservice"]
+    api_put_not_allowed = ["backup"]
+
+    if method == 'post' and not any(path.startswith(uri) for uri in api_post_not_allowed):
+        # TODO: Above condition should be updated after AV-38981 is fixed
         # need to check if object already exists. In that case
         # change the method to be put
-        gparams['name'] = data['name']
-        rsp = api.get(path, tenant=tenant, tenant_uuid=tenant_uuid,
-                      params=gparams, api_version=api_version)
         try:
-            existing_obj = rsp.json()['results'][0]
-        except IndexError:
+            using_collection = False
+            if not any(path.startswith(uri) for uri in api_get_not_allowed):
+                if 'name' in data:
+                    gparams['name'] = data['name']
+                using_collection = True
+            if not any(path.startswith(uri) for uri in api_get_not_allowed):
+                rsp = api.get(path, tenant=tenant, tenant_uuid=tenant_uuid,
+                              params=gparams, api_version=api_version)
+                existing_obj = rsp.json()
+                if using_collection:
+                    existing_obj = existing_obj['results'][0]
+        except (IndexError, KeyError):
             # object is not found
             pass
         else:
-            # object is present
-            method = 'put'
-            path += '/' + existing_obj['uuid']
+            if not any(path.startswith(uri) for uri in api_get_not_allowed):
+                # object is present
+                method = 'put'
+                path += '/' + existing_obj['uuid']
 
-    if method == 'put':
+    if method == 'put' and not any(path.startswith(uri) for uri in api_put_not_allowed):
         # put can happen with when full path is specified or it is put + post
         if existing_obj is None:
             using_collection = False
-            if (len(path.split('/')) == 1) and ('name' in data):
+            if ((len(path.split('/')) == 1) and ('name' in data) and
+                    (not any(path.startswith(uri) for uri in api_get_not_allowed))):
                 gparams['name'] = data['name']
                 using_collection = True
             rsp = api.get(path, tenant=tenant, tenant_uuid=tenant_uuid,

@@ -1,26 +1,12 @@
 #!/usr/bin/python
 #
-# Created on Aug 25, 2016
 # @author: Gaurav Rastogi (grastogi@avinetworks.com)
 #          Eric Anderson (eanderson@avinetworks.com)
 # module_check: supported
 # Avi Version: 17.1.1
 #
-#
-# This file is part of Ansible
-#
-# Ansible is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# Ansible is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with Ansible.  If not, see <http://www.gnu.org/licenses/>.
+# Copyright: (c) 2017 Gaurav Rastogi, <grastogi@avinetworks.com>
+# GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 #
 
 ANSIBLE_METADATA = {'metadata_version': '1.1',
@@ -30,7 +16,7 @@ ANSIBLE_METADATA = {'metadata_version': '1.1',
 DOCUMENTATION = '''
 ---
 module: avi_applicationprofile
-author: Gaurav Rastogi (grastogi@avinetworks.com)
+author: Gaurav Rastogi (@grastogi23) <grastogi@avinetworks.com>
 
 short_description: Module for setup of ApplicationProfile Avi RESTful Object
 description:
@@ -43,7 +29,30 @@ options:
         description:
             - The state that should be applied on the entity.
         default: present
-        choices: ["absent","present"]
+        choices: ["absent", "present"]
+    avi_api_update_method:
+        description:
+            - Default method for object update is HTTP PUT.
+            - Setting to patch will override that behavior to use HTTP PATCH.
+        version_added: "2.5"
+        default: put
+        choices: ["put", "patch"]
+    avi_api_patch_op:
+        description:
+            - Patch operation to use when using avi_api_update_method as patch.
+        version_added: "2.5"
+        choices: ["add", "replace", "delete"]
+    cloud_config_cksum:
+        description:
+            - Checksum of application profiles.
+            - Internally set by cloud connector.
+            - Field introduced in 17.2.14, 18.1.5, 18.2.1.
+        version_added: "2.9"
+    created_by:
+        description:
+            - Name of the application profile creator.
+            - Field introduced in 17.2.14, 18.1.5, 18.2.1.
+        version_added: "2.9"
     description:
         description:
             - User defined description for the object.
@@ -65,6 +74,19 @@ options:
             - Specifies if client ip needs to be preserved for backend connection.
             - Not compatible with connection multiplexing.
             - Default value when not specified in API or module is interpreted by Avi Controller as False.
+        type: bool
+    preserve_client_port:
+        description:
+            - Specifies if we need to preserve client port while preserving client ip for backend connections.
+            - Field introduced in 17.2.7.
+            - Default value when not specified in API or module is interpreted by Avi Controller as False.
+        version_added: "2.6"
+        type: bool
+    sip_service_profile:
+        description:
+            - Specifies various sip service related controls for virtual service.
+            - Field introduced in 17.2.8, 18.1.3, 18.2.1.
+        version_added: "2.9"
     tcp_app_profile:
         description:
             - Specifies the tcp application proxy profile parameters.
@@ -75,7 +97,7 @@ options:
         description:
             - Specifies which application layer proxy is enabled for the virtual service.
             - Enum options - APPLICATION_PROFILE_TYPE_L4, APPLICATION_PROFILE_TYPE_HTTP, APPLICATION_PROFILE_TYPE_SYSLOG, APPLICATION_PROFILE_TYPE_DNS,
-            - APPLICATION_PROFILE_TYPE_SSL.
+            - APPLICATION_PROFILE_TYPE_SSL, APPLICATION_PROFILE_TYPE_SIP.
         required: true
     url:
         description:
@@ -87,13 +109,12 @@ extends_documentation_fragment:
     - avi
 '''
 
-
-EXAMPLES = '''
+EXAMPLES = """
   - name: Create an Application Profile for HTTP application enabled for SSL traffic
     avi_applicationprofile:
-      controller: ''
-      username: ''
-      password: ''
+      controller: '{{ controller }}'
+      username: '{{ username }}'
+      password: '{{ password }}'
       http_profile:
         cache_config:
           age_header: true
@@ -148,7 +169,8 @@ EXAMPLES = '''
       name: System-HTTP
       tenant_ref: admin
       type: APPLICATION_PROFILE_TYPE_HTTP
-'''
+"""
+
 RETURN = '''
 obj:
     description: ApplicationProfile (api/applicationprofile) object
@@ -159,7 +181,7 @@ obj:
 from ansible.module_utils.basic import AnsibleModule
 try:
     from ansible.module_utils.network.avi.avi import (
-        avi_common_argument_spec, HAS_AVI, avi_ansible_api)
+        avi_common_argument_spec, avi_ansible_api, HAS_AVI)
 except ImportError:
     HAS_AVI = False
 
@@ -168,12 +190,19 @@ def main():
     argument_specs = dict(
         state=dict(default='present',
                    choices=['absent', 'present']),
+        avi_api_update_method=dict(default='put',
+                                   choices=['put', 'patch']),
+        avi_api_patch_op=dict(choices=['add', 'replace', 'delete']),
+        cloud_config_cksum=dict(type='str',),
+        created_by=dict(type='str',),
         description=dict(type='str',),
         dns_service_profile=dict(type='dict',),
         dos_rl_profile=dict(type='dict',),
         http_profile=dict(type='dict',),
         name=dict(type='str', required=True),
         preserve_client_ip=dict(type='bool',),
+        preserve_client_port=dict(type='bool',),
+        sip_service_profile=dict(type='dict',),
         tcp_app_profile=dict(type='dict',),
         tenant_ref=dict(type='str',),
         type=dict(type='str', required=True),
@@ -185,10 +214,11 @@ def main():
         argument_spec=argument_specs, supports_check_mode=True)
     if not HAS_AVI:
         return module.fail_json(msg=(
-            'Avi python API SDK (avisdk>=17.1) is not installed. '
+            'Avi python API SDK (avisdk>=17.1) or requests is not installed. '
             'For more details visit https://github.com/avinetworks/sdk.'))
     return avi_ansible_api(module, 'applicationprofile',
                            set([]))
+
 
 if __name__ == '__main__':
     main()

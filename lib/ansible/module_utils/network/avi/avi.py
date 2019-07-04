@@ -32,51 +32,7 @@
 # avi.sdk.
 
 from __future__ import absolute_import
-import os
-from distutils.version import LooseVersion
 
-HAS_AVI = True
-try:
-    import avi.sdk
-    sdk_version = getattr(avi.sdk, '__version__', None)
-    if ((sdk_version is None) or (sdk_version and (LooseVersion(sdk_version) < LooseVersion('17.1')))):
-        # It allows the __version__ to be '' as that value is used in development builds
-        raise ImportError
-    from avi.sdk.utils.ansible_utils import avi_ansible_api
-except ImportError:
-    HAS_AVI = False
-
-
-def avi_common_argument_spec():
-    """
-    Returns common arguments for all Avi modules
-    :return: dict
-    """
-    return dict(
-        controller=dict(default=os.environ.get('AVI_CONTROLLER', '')),
-        username=dict(default=os.environ.get('AVI_USERNAME', '')),
-        password=dict(default=os.environ.get('AVI_PASSWORD', ''), no_log=True),
-        tenant=dict(default='admin'),
-        tenant_uuid=dict(default=''),
-        api_version=dict(default='16.4'))
-
-
-def ansible_return(module, rsp, changed, req=None, existing_obj=None):
-    """
-    Helper function to return the right ansible return based on the error code and
-    changed status.
-    :param module: AnsibleModule
-    :param rsp: ApiResponse object returned from ApiSession.
-    :param changed: Whether something changed in this module.
-    :param req: Dict data for Avi API call.
-    :param existing_obj: Dict representing current HTTP resource in Avi Controller.
-
-    Returns: specific ansible module exit function
-    """
-    if rsp.status_code > 299:
-        return module.fail_json(msg='Error %d Msg %s req: %s' % (
-            rsp.status_code, rsp.text, req))
-    if changed and existing_obj:
-        return module.exit_json(
-            changed=changed, obj=rsp.json(), old_obj=existing_obj)
-    return module.exit_json(changed=changed, obj=rsp.json())
+from ansible.module_utils.network.avi.ansible_utils import (
+    avi_ansible_api, avi_common_argument_spec, ansible_return,
+    avi_obj_cmp, cleanup_absent_fields, AviCheckModeResponse, HAS_AVI)

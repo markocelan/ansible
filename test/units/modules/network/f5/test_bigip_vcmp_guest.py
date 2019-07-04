@@ -11,30 +11,36 @@ import json
 import pytest
 import sys
 
-from nose.plugins.skip import SkipTest
 if sys.version_info < (2, 7):
-    raise SkipTest("F5 Ansible modules require Python >= 2.7")
+    pytestmark = pytest.mark.skip("F5 Ansible modules require Python >= 2.7")
 
-from ansible.compat.tests import unittest
-from ansible.compat.tests.mock import Mock
-from ansible.compat.tests.mock import patch
-from ansible.module_utils.f5_utils import AnsibleF5Client
+from ansible.module_utils.basic import AnsibleModule
 
 try:
-    from library.bigip_vcmp_guest import Parameters
-    from library.bigip_vcmp_guest import ModuleManager
-    from library.bigip_vcmp_guest import ArgumentSpec
-    from ansible.module_utils.f5_utils import iControlUnexpectedHTTPError
-    from test.unit.modules.utils import set_module_args
+    from library.modules.bigip_vcmp_guest import ModuleParameters
+    from library.modules.bigip_vcmp_guest import ApiParameters
+    from library.modules.bigip_vcmp_guest import ModuleManager
+    from library.modules.bigip_vcmp_guest import ArgumentSpec
+
+    # In Ansible 2.8, Ansible changed import paths.
+    from test.units.compat import unittest
+    from test.units.compat.mock import Mock
+    from test.units.compat.mock import patch
+
+    from test.units.modules.utils import set_module_args
 except ImportError:
-    try:
-        from ansible.modules.network.f5.bigip_vcmp_guest import Parameters
-        from ansible.modules.network.f5.bigip_vcmp_guest import ModuleManager
-        from ansible.modules.network.f5.bigip_vcmp_guest import ArgumentSpec
-        from ansible.module_utils.f5_utils import iControlUnexpectedHTTPError
-        from units.modules.utils import set_module_args
-    except ImportError:
-        raise SkipTest("F5 Ansible modules require the f5-sdk Python library")
+    from ansible.modules.network.f5.bigip_vcmp_guest import ModuleParameters
+    from ansible.modules.network.f5.bigip_vcmp_guest import ApiParameters
+    from ansible.modules.network.f5.bigip_vcmp_guest import ModuleManager
+    from ansible.modules.network.f5.bigip_vcmp_guest import ArgumentSpec
+
+    # Ansible 2.8 imports
+    from units.compat import unittest
+    from units.compat.mock import Mock
+    from units.compat.mock import patch
+
+    from units.modules.utils import set_module_args
+
 
 fixture_path = os.path.join(os.path.dirname(__file__), 'fixtures')
 fixture_data = {}
@@ -70,7 +76,7 @@ class TestParameters(unittest.TestCase):
             ]
         )
 
-        p = Parameters(args)
+        p = ModuleParameters(params=args)
         assert p.initial_image == 'BIGIP-12.1.0.1.0.1447-HF1.iso'
         assert p.mgmt_network == 'bridged'
 
@@ -80,7 +86,7 @@ class TestParameters(unittest.TestCase):
             mgmt_address='1.2.3.4'
         )
 
-        p = Parameters(args)
+        p = ModuleParameters(params=args)
         assert p.mgmt_network == 'bridged'
         assert p.mgmt_address == '1.2.3.4/32'
 
@@ -90,7 +96,7 @@ class TestParameters(unittest.TestCase):
             mgmt_address='1.2.3.4/24'
         )
 
-        p = Parameters(args)
+        p = ModuleParameters(params=args)
         assert p.mgmt_network == 'bridged'
         assert p.mgmt_address == '1.2.3.4/24'
 
@@ -100,7 +106,7 @@ class TestParameters(unittest.TestCase):
             mgmt_address='1.2.3.4/255.255.255.0'
         )
 
-        p = Parameters(args)
+        p = ModuleParameters(params=args)
         assert p.mgmt_network == 'bridged'
         assert p.mgmt_address == '1.2.3.4/24'
 
@@ -109,7 +115,7 @@ class TestParameters(unittest.TestCase):
             mgmt_route='1.2.3.4'
         )
 
-        p = Parameters(args)
+        p = ModuleParameters(params=args)
         assert p.mgmt_route == '1.2.3.4'
 
     def test_module_parameters_vcmp_software_image_facts(self):
@@ -120,7 +126,7 @@ class TestParameters(unittest.TestCase):
             initial_image='BIGIP-12.1.0.1.0.1447-HF1.iso/1',
         )
 
-        p = Parameters(args)
+        p = ModuleParameters(params=args)
         assert p.initial_image == 'BIGIP-12.1.0.1.0.1447-HF1.iso/1'
 
     def test_api_parameters(self):
@@ -136,39 +142,83 @@ class TestParameters(unittest.TestCase):
             ]
         )
 
-        p = Parameters(args)
+        p = ApiParameters(params=args)
         assert p.initial_image == 'BIGIP-tmos-tier2-13.1.0.0.0.931.iso'
         assert p.mgmt_route == '2.2.2.2'
         assert p.mgmt_address == '1.1.1.1/24'
         assert '/Common/vlan1' in p.vlans
         assert '/Common/vlan2' in p.vlans
 
+    def test_api_parameters_with_hotfix(self):
+        args = dict(
+            initialImage="BIGIP-14.1.0.3-0.0.6.iso",
+            initialHotfix="Hotfix-BIGIP-14.1.0.3.0.5.6-ENG.iso",
+            managementGw="2.2.2.2",
+            managementIp="1.1.1.1/24",
+            managementNetwork="bridged",
+            state="deployed",
+            vlans=[
+                "/Common/vlan1",
+                "/Common/vlan2"
+            ]
+        )
 
-@patch('ansible.module_utils.f5_utils.AnsibleF5Client._get_mgmt_root',
-       return_value=True)
+        p = ApiParameters(params=args)
+        assert p.initial_image == 'BIGIP-14.1.0.3-0.0.6.iso'
+        assert p.initial_hotfix == 'Hotfix-BIGIP-14.1.0.3.0.5.6-ENG.iso'
+        assert p.mgmt_route == '2.2.2.2'
+        assert p.mgmt_address == '1.1.1.1/24'
+        assert '/Common/vlan1' in p.vlans
+        assert '/Common/vlan2' in p.vlans
+
+
 class TestManager(unittest.TestCase):
     def setUp(self):
         self.spec = ArgumentSpec()
+        self.patcher1 = patch('time.sleep')
+        self.patcher1.start()
 
-    def test_create_vlan(self, *args):
+        try:
+            self.p1 = patch('library.modules.bigip_vcmp_guest.ModuleParameters.initial_image_exists')
+            self.m1 = self.p1.start()
+            self.m1.return_value = True
+            self.p2 = patch('library.modules.bigip_vcmp_guest.ModuleParameters.initial_hotfix_exists')
+            self.m2 = self.p2.start()
+            self.m2.return_value = True
+        except Exception:
+            self.p1 = patch('ansible.modules.network.f5.bigip_vcmp_guest.ModuleParameters.initial_image_exists')
+            self.m1 = self.p1.start()
+            self.m1.return_value = True
+            self.p2 = patch('ansible.modules.network.f5.bigip_vcmp_guest.ModuleParameters.initial_hotfix_exists')
+            self.m2 = self.p2.start()
+            self.m2.return_value = True
+
+    def tearDown(self):
+        self.patcher1.stop()
+        self.p1.stop()
+        self.p2.stop()
+
+    def test_create_vcmpguest(self, *args):
         set_module_args(dict(
             name="guest1",
             mgmt_network="bridged",
             mgmt_address="10.10.10.10/24",
             initial_image="BIGIP-13.1.0.0.0.931.iso",
-            server='localhost',
-            password='password',
-            user='admin'
+            provider=dict(
+                server='localhost',
+                password='password',
+                user='admin'
+            )
         ))
 
-        client = AnsibleF5Client(
+        module = AnsibleModule(
             argument_spec=self.spec.argument_spec,
             supports_check_mode=self.spec.supports_check_mode,
-            f5_product_name=self.spec.f5_product_name
+            required_if=self.spec.required_if
         )
 
         # Override methods to force specific logic in the module to happen
-        mm = ModuleManager(client)
+        mm = ModuleManager(module=module)
         mm.create_on_device = Mock(return_value=True)
         mm.exists = Mock(return_value=False)
         mm.is_deployed = Mock(side_effect=[False, True, True, True, True])
@@ -178,3 +228,35 @@ class TestManager(unittest.TestCase):
 
         assert results['changed'] is True
         assert results['name'] == 'guest1'
+
+    def test_create_vcmpguest_with_hotfix(self, *args):
+        set_module_args(dict(
+            name="guest2",
+            mgmt_network="bridged",
+            mgmt_address="10.10.10.10/24",
+            initial_image="BIGIP-14.1.0.3-0.0.6.iso",
+            initial_hotfix="Hotfix-BIGIP-14.1.0.3.0.5.6-ENG.iso",
+            provider=dict(
+                server='localhost',
+                password='password',
+                user='admin'
+            )
+        ))
+
+        module = AnsibleModule(
+            argument_spec=self.spec.argument_spec,
+            supports_check_mode=self.spec.supports_check_mode,
+            required_if=self.spec.required_if
+        )
+
+        # Override methods to force specific logic in the module to happen
+        mm = ModuleManager(module=module)
+        mm.create_on_device = Mock(return_value=True)
+        mm.exists = Mock(return_value=False)
+        mm.is_deployed = Mock(side_effect=[False, True, True, True, True])
+        mm.deploy_on_device = Mock(return_value=True)
+
+        results = mm.exec_module()
+
+        assert results['changed'] is True
+        assert results['name'] == 'guest2'

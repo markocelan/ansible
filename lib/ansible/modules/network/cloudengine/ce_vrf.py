@@ -27,7 +27,7 @@ version_added: "2.4"
 short_description: Manages VPN instance on HUAWEI CloudEngine switches.
 description:
     - Manages VPN instance of HUAWEI CloudEngine switches.
-author: Yang yang (@CloudEngine-Ansible)
+author: Yang yang (@QijunPan)
 notes:
     - If I(state=absent), the route will be removed, regardless of the
       non-required options.
@@ -39,12 +39,9 @@ options:
     description:
         description:
             - Description of the vrf, the string length is 1 - 242 .
-        required: false
-        default: null
     state:
         description:
             - Manage the state of the resource.
-        required: false
         choices: ['present','absent']
         default: present
 '''
@@ -105,7 +102,7 @@ updates:
 changed:
     description: check to see if a change was made on the device
     returned: always
-    type: boolean
+    type: bool
     sample: true
 '''
 
@@ -217,7 +214,7 @@ class Vrf(object):
 
         root = ElementTree.fromstring(xml_str)
         vpn_instances = root.findall(
-            "data/l3vpn/l3vpncomm/l3vpnInstances/l3vpnInstance")
+            "l3vpn/l3vpncomm/l3vpnInstances/l3vpnInstance")
         if vpn_instances:
             for vpn_instance in vpn_instances:
                 if vpn_instance.find('vrfName').text == self.vrf:

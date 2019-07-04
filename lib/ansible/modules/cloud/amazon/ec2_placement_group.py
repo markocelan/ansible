@@ -15,7 +15,7 @@ description:
     - Create an EC2 Placement Group; if the placement group already exists,
       nothing is done. Or, delete an existing placement group. If the placement
       group is absent, do nothing. See also
-      http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/placement-groups.html
+      U(https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/placement-groups.html)
 version_added: "2.5"
 author: "Brad Macpherson (@iiibrad)"
 options:
@@ -73,15 +73,15 @@ placement_group:
   contains:
     name:
       description: PG name
-      type: string
+      type: str
       sample: my-cluster
     state:
       description: PG state
-      type: string
+      type: str
       sample: "available"
     strategy:
       description: PG strategy
-      type: string
+      type: str
       sample: "cluster"
 
 '''
@@ -182,7 +182,7 @@ def main():
 
     connection = boto3_conn(module,
                             resource='ec2', conn_type='client',
-                            region=region, **aws_connect_params)
+                            region=region, endpoint=ec2_url, **aws_connect_params)
 
     state = module.params.get("state")
 

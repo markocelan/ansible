@@ -1,11 +1,9 @@
 #!powershell
-# This file is part of Ansible
-#
-# Copyright 2017, Liran Nisanov <lirannis@gmail.com>
+
+# Copyright: (c) 2017, Liran Nisanov <lirannis@gmail.com>
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
-# WANT_JSON
-# POWERSHELL_COMMON
+#Requires -Module Ansible.ModuleUtils.Legacy
 
 ########
 
@@ -41,13 +39,13 @@ $result = @{
 
 if ($removeAll) {
     $currentPageFiles = Get-WmiObject Win32_PageFileSetting
-    if ($currentPageFiles -ne $null) {
+    if ($null -ne $currentPageFiles) {
         $currentPageFiles | Remove-WmiObject -WhatIf:$check_mode | Out-Null
         $result.changed = $true
     }
 }
 
-if ($automatic -ne $null) {
+if ($null -ne $automatic) {
     # change autmoatic managed pagefile 
     try {
         $computerSystem = Get-WmiObject -Class win32_computersystem -EnableAllPrivileges
@@ -69,7 +67,7 @@ if ($automatic -ne $null) {
 
 if ($state -eq "absent") {
     # Remove pagefile
-    if ((Get-Pagefile $fullPath) -ne $null)
+    if ($null -ne (Get-Pagefile $fullPath))
     {
         try {
             Remove-Pagefile $fullPath -whatif:$check_mode
@@ -81,7 +79,7 @@ if ($state -eq "absent") {
 } elseif ($state -eq "present") {
     # Remove current pagefile
     if ($override) {
-        if ((Get-Pagefile $fullPath) -ne $null)
+        if ($null -ne (Get-Pagefile $fullPath))
         {
             try {
                 Remove-Pagefile $fullPath -whatif:$check_mode
@@ -93,12 +91,14 @@ if ($state -eq "absent") {
     }
 
     # Make sure drive is accessible
-    if (($test_path) -and (-not (Test-Path "${drive}:"))) {
+    if (($testPath) -and (-not (Test-Path "${drive}:"))) {
         Fail-Json $result "Unable to access '${drive}:' drive"
     }
 
+    $curPagefile = Get-Pagefile $fullPath
+
     # Set pagefile
-    if ((Get-Pagefile $fullPath) -eq $null) {
+    if ($null -eq $curPagefile) {
         try {
             $pagefile = Set-WmiInstance -Class Win32_PageFileSetting -Arguments @{name = $fullPath; InitialSize = 0; MaximumSize = 0} -WhatIf:$check_mode
         } catch {
@@ -131,11 +131,45 @@ if ($state -eq "absent") {
             }
         }
         $result.changed = $true
+    }else
+    {
+        $CurPageFileSystemManaged = (Get-CimInstance -ClassName win32_Pagefile -Property 'System' -Filter "name='$($fullPath.Replace('\','\\'))'").System
+        if ((-not $check_mode) -and 
+            -not ($systemManaged -or $CurPageFileSystemManaged) -and 
+            (   ($curPagefile.InitialSize -ne $initialSize) -or 
+                ($curPagefile.maximumSize -ne $maximumSize)))
+        {
+            $curPagefile.InitialSize = $initialSize
+            $curPagefile.MaximumSize = $maximumSize
+            try {
+                $curPagefile.Put() | out-null
+            } catch {
+                $originalExceptionMessage = $($_.Exception.Message)
+                # Try workaround before failing
+                try {
+                    Remove-Pagefile $fullPath -whatif:$check_mode
+                } catch {
+                    Fail-Json $result "Failed to remove pagefile before workaround $($_.Exception.Message) Original exception: $originalExceptionMessage"
+                }
+                try {
+                    $pagingFilesValues = (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management").PagingFiles
+                } catch {
+                    Fail-Json $result "Failed to get pagefile settings from the registry for workaround $($_.Exception.Message) Original exception: $originalExceptionMessage"
+                }
+                $pagingFilesValues += "$fullPath $initialSize $maximumSize"
+                try {
+                    Set-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management" "PagingFiles" $pagingFilesValues
+                } catch {
+                    Fail-Json $result "Failed to set pagefile settings to the registry for workaround $($_.Exception.Message) Original exception: $originalExceptionMessage"
+                }
+            }
+            $result.changed = $true
+        }
     }
 } elseif ($state -eq "query") {
     $result.pagefiles = @()
 
-    if ($drive -eq $null) {
+    if ($null -eq $drive) {
         try {
             $pagefiles = Get-WmiObject Win32_PageFileSetting
         } catch {

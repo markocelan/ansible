@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 # Copyright: (c) 2013, Johan Wiren <johan.wiren.se@gmail.com>
+# Copyright: (c) 2017, Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 from __future__ import absolute_import, division, print_function
@@ -33,10 +34,11 @@ options:
   origin:
     description:
       - Snapshot from which to create a clone.
-  key_value:
+  extra_zfs_properties:
     description:
-      - The C(zfs) module takes key=value pairs for zfs properties to be set.
+      - A dictionary of zfs properties to be set.
       - See the zfs(8) man page for more information.
+    version_added: "2.5"
 author:
 - Johan Wiren (@johanwiren)
 '''
@@ -46,13 +48,15 @@ EXAMPLES = '''
   zfs:
     name: rpool/myfs
     state: present
-    setuid: off
+    extra_zfs_properties:
+      setuid: off
 
 - name: Create a new volume called myvol in pool rpool.
   zfs:
     name: rpool/myvol
     state: present
-    volsize: 10M
+    extra_zfs_properties:
+      volsize: 10M
 
 - name: Create a snapshot of rpool/myfs file system.
   zfs:
@@ -63,7 +67,8 @@ EXAMPLES = '''
   zfs:
     name: rpool/myfs2
     state: present
-    snapdir: enabled
+    extra_zfs_properties:
+      snapdir: enabled
 
 - name: Create a new file system by cloning a snapshot
   zfs:
@@ -132,9 +137,7 @@ class Zfs(object):
             self.changed = True
             return
         properties = self.properties
-        volsize = properties.pop('volsize', None)
-        volblocksize = properties.pop('volblocksize', None)
-        origin = properties.pop('origin', None)
+        origin = self.module.params.get('origin', None)
         cmd = [self.zfs_cmd]
 
         if "@" in self.name:
@@ -149,14 +152,15 @@ class Zfs(object):
         if action in ['create', 'clone']:
             cmd += ['-p']
 
-        if volsize:
-            cmd += ['-V', volsize]
-        if volblocksize:
-            cmd += ['-b', volblocksize]
         if properties:
             for prop, value in properties.items():
-                cmd += ['-o', '%s="%s"' % (prop, value)]
-        if origin:
+                if prop == 'volsize':
+                    cmd += ['-V', value]
+                elif prop == 'volblocksize':
+                    cmd += ['-b', value]
+                else:
+                    cmd += ['-o', '%s="%s"' % (prop, value)]
+        if origin and action == 'clone':
             cmd.append(origin)
         cmd.append(self.name)
         (rc, out, err) = self.module.run_command(' '.join(cmd))
@@ -216,36 +220,34 @@ def main():
         argument_spec=dict(
             name=dict(type='str', required=True),
             state=dict(type='str', required=True, choices=['absent', 'present']),
-            # No longer used. Kept here to not interfere with zfs properties
-            createparent=dict(type='bool'),
+            origin=dict(type='str', default=None),
+            extra_zfs_properties=dict(type='dict', default={}),
         ),
         supports_check_mode=True,
-        check_invalid_arguments=False,
     )
 
-    state = module.params.pop('state')
-    name = module.params.pop('name')
+    state = module.params.get('state')
+    name = module.params.get('name')
 
-    # Get all valid zfs-properties
-    properties = dict()
-    for prop, value in module.params.items():
-        # All freestyle params are zfs properties
-        if prop not in module.argument_spec:
-            # Reverse the boolification of freestyle zfs properties
-            if isinstance(value, bool):
-                if value is True:
-                    properties[prop] = 'on'
-                else:
-                    properties[prop] = 'off'
+    if module.params.get('origin') and '@' in name:
+        module.fail_json(msg='cannot specify origin when operating on a snapshot')
+
+    # Reverse the boolification of zfs properties
+    for prop, value in module.params['extra_zfs_properties'].items():
+        if isinstance(value, bool):
+            if value is True:
+                module.params['extra_zfs_properties'][prop] = 'on'
             else:
-                properties[prop] = value
+                module.params['extra_zfs_properties'][prop] = 'off'
+        else:
+            module.params['extra_zfs_properties'][prop] = value
 
     result = dict(
         name=name,
         state=state,
     )
 
-    zfs = Zfs(module, name, properties)
+    zfs = Zfs(module, name, module.params['extra_zfs_properties'])
 
     if state == 'present':
         if zfs.exists():

@@ -1,7 +1,7 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-# (c) 2017, Ansible by Red Hat, inc
+# Copyright: (c) 2017, Ansible by Red Hat, inc
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 from __future__ import absolute_import, division, print_function
@@ -32,13 +32,11 @@ options:
     description:
       - Specifies the type of banner to configure on remote device.
     required: true
-    default: null
     choices: ['login', 'motd']
   text:
     description:
       - Banner text to be configured. Accepts multiline string,
         without empty lines. Requires I(state=present).
-    default: null
   state:
     description:
       - Existential state of the configuration on the device.
@@ -68,14 +66,29 @@ EXAMPLES = """
 
 RETURN = """
 commands:
-  description: The list of configuration mode commands to send to the device
-  returned: always
+  description: The list of configuration mode commands sent to device with transport C(cli)
+  returned: always (empty list when no commands to send)
   type: list
   sample:
     - banner login
     - this is my login banner
     - that contains a multiline
     - string
+
+xml:
+  description: NetConf rpc xml sent to device with transport C(netconf)
+  returned: always (empty list when no xml rpc to send)
+  type: list
+  version_added: 2.5
+  sample:
+    - '<config xmlns:xc="urn:ietf:params:xml:ns:netconf:base:1.0">
+            <banners xmlns="http://cisco.com/ns/yang/Cisco-IOS-XR-infra-infra-cfg">
+                <banner xc:operation="merge">
+                  <banner-name>motd</banner-name>
+                  <banner-text>Ansible banner example</banner-text>
+                </banner>
+            </banners>
+        </config>'
 """
 
 import re
@@ -83,9 +96,9 @@ import collections
 
 from ansible.module_utils.basic import AnsibleModule
 from ansible.module_utils.network.iosxr.iosxr import get_config, load_config
-from ansible.module_utils.network.iosxr.iosxr import iosxr_argument_spec, discard_config
-from ansible.module_utils.network.iosxr.iosxr import build_xml, is_cliconf, is_netconf
-from ansible.module_utils.network.iosxr.iosxr import etree_find
+from ansible.module_utils.network.iosxr.iosxr import iosxr_argument_spec
+from ansible.module_utils.network.iosxr.iosxr import build_xml, is_cliconf
+from ansible.module_utils.network.iosxr.iosxr import etree_find, is_netconf
 
 
 class ConfigBase(object):
@@ -98,7 +111,7 @@ class ConfigBase(object):
     def map_params_to_obj(self):
         text = self._module.params['text']
         if text:
-            text = "{!r}".format(str(text).strip())
+            text = "{0!r}".format(str(text).strip())
         self._want.update({
             'banner': self._module.params['banner'],
             'text': text,
@@ -115,11 +128,11 @@ class CliConfiguration(ConfigBase):
         state = self._module.params['state']
         if state == 'absent':
             if self._have.get('state') != 'absent' and ('text' in self._have.keys() and self._have['text']):
-                commands.append('no banner {!s}'.format(self._module.params['banner']))
+                commands.append('no banner {0!s}'.format(self._module.params['banner']))
         elif state == 'present':
             if (self._want['text'] and
                     self._want['text'].encode().decode('unicode_escape').strip("'") != self._have.get('text')):
-                banner_cmd = 'banner {!s} '.format(self._module.params['banner'])
+                banner_cmd = 'banner {0!s} '.format(self._module.params['banner'])
                 banner_cmd += self._want['text'].strip()
                 commands.append(banner_cmd)
         self._result['commands'] = commands
@@ -131,7 +144,7 @@ class CliConfiguration(ConfigBase):
             self._result['changed'] = True
 
     def map_config_to_obj(self):
-        cli_filter = 'banner {!s}'.format(self._module.params['banner'])
+        cli_filter = 'banner {0!s}'.format(self._module.params['banner'])
         output = get_config(self._module, config_filter=cli_filter)
         match = re.search(r'banner (\S+) (.*)', output, re.DOTALL)
         if match:
@@ -162,7 +175,7 @@ class NCConfiguration(ConfigBase):
             ('a:text', {'xpath': 'banner/banner-text', 'operation': 'edit'})
         ])
 
-    def map_obj_to_commands(self):
+    def map_obj_to_xml_rpc(self):
         state = self._module.params['state']
         _get_filter = build_xml('banners', xmap=self._banners_meta, params=self._module.params, opcode="filter")
 
@@ -180,7 +193,7 @@ class NCConfiguration(ConfigBase):
         elif state == 'present':
             opcode = 'merge'
 
-        self._result['commands'] = []
+        self._result['xml'] = []
         if opcode:
             _edit_filter = build_xml('banners', xmap=self._banners_meta, params=self._module.params, opcode=opcode)
 
@@ -189,7 +202,7 @@ class NCConfiguration(ConfigBase):
                 diff = load_config(self._module, _edit_filter, commit=commit, running=running, nc_get_filter=_get_filter)
 
                 if diff:
-                    self._result['commands'] = _edit_filter
+                    self._result['xml'] = _edit_filter
                     if self._module._diff:
                         self._result['diff'] = dict(prepared=diff)
 
@@ -197,7 +210,7 @@ class NCConfiguration(ConfigBase):
 
     def run(self):
         self.map_params_to_obj()
-        self.map_obj_to_commands()
+        self.map_obj_to_xml_rpc()
 
         return self._result
 
@@ -219,13 +232,18 @@ def main():
                            required_if=required_if,
                            supports_check_mode=True)
 
+    config_object = None
     if is_cliconf(module):
-        module.deprecate(msg="cli support for 'iosxr_banner' is deprecated. Use transport netconf instead", version="4 releases from v2.5")
+        # Commenting the below cliconf deprecation support call for Ansible 2.9 as it'll be continued to be supported
+        # module.deprecate("cli support for 'iosxr_interface' is deprecated. Use transport netconf instead",
+        #                  version='2.9')
         config_object = CliConfiguration(module)
     elif is_netconf(module):
         config_object = NCConfiguration(module)
 
-    result = config_object.run()
+    result = None
+    if config_object is not None:
+        result = config_object.run()
     module.exit_json(**result)
 
 

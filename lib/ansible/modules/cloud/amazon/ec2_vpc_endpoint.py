@@ -27,7 +27,7 @@ options:
     required: false
   service:
     description:
-      - An AWS supported vpc endpoint service. Use the ec2_vpc_endpoint_facts
+      - An AWS supported vpc endpoint service. Use the M(ec2_vpc_endpoint_info)
         module to describe the supported endpoint services.
       - Required when creating an endpoint.
     required: false
@@ -62,7 +62,7 @@ options:
         behaviour from AWS.
     required: false
     default: no
-    choices: ["yes", "no"]
+    type: bool
   wait_timeout:
     description:
       - Used in conjunction with wait. Number of seconds to wait for status.
@@ -84,7 +84,7 @@ options:
     description:
       - Optional client token to ensure idempotency
     required: false
-author: Karen Cheng(@Etherdaemon)
+author: Karen Cheng (@Etherdaemon)
 extends_documentation_fragment:
   - aws
   - ec2

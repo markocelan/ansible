@@ -31,15 +31,37 @@ description:
     - Manages configuration of a Protocol Independent Multicast (PIM) instance.
 author: Gabriele Gerbino (@GGabriele)
 options:
+  bfd:
+    description:
+      - Enables BFD on all PIM interfaces.
+      - "Dependency: 'feature bfd'"
+    version_added: "2.9"
+    type: str
+    choices: ['enable', 'disable']
+
   ssm_range:
     description:
       - Configure group ranges for Source Specific Multicast (SSM).
-        Valid values are multicast addresses or the keyword 'none'.
+        Valid values are multicast addresses or the keyword C(none)
+        or keyword C(default). C(none) removes all SSM group ranges.
+        C(default) will set ssm_range to the default multicast address.
+        If you set multicast address, please ensure that it is not the
+        same as the C(default), otherwise use the C(default) option.
     required: true
 '''
 EXAMPLES = '''
-- nxos_pim:
-    ssm_range: "232.0.0.0/8"
+- name: Configure ssm_range, enable bfd
+  nxos_pim:
+    bfd: enable
+    ssm_range: "224.0.0.0/8"
+
+- name: Set to default
+  nxos_pim:
+    ssm_range: default
+
+- name: Remove all ssm group ranges
+  nxos_pim:
+    ssm_range: none
 '''
 
 RETURN = '''
@@ -47,7 +69,9 @@ commands:
     description: commands sent to the device
     returned: always
     type: list
-    sample: ["ip pim ssm range 232.0.0.0/8"]
+    sample:
+      - ip pim bfd
+      - ip pim ssm range 224.0.0.0/8
 '''
 
 
@@ -60,7 +84,8 @@ from ansible.module_utils.network.common.config import CustomNetworkConfig
 
 
 PARAM_TO_COMMAND_KEYMAP = {
-    'ssm_range': 'ip pim ssm range'
+    'bfd': 'ip pim bfd',
+    'ssm_range': 'ip pim ssm range',
 }
 
 
@@ -69,13 +94,17 @@ def get_existing(module, args):
     config = str(get_config(module))
 
     for arg in args:
-        command = PARAM_TO_COMMAND_KEYMAP[arg]
-        has_command = re.search(r'^{0}\s(?P<value>.*)$'.format(command), config, re.M)
+        if 'ssm_range' in arg:
+            # <value> may be 'n.n.n.n/s', 'none', or 'default'
+            m = re.search(r'ssm range (?P<value>(?:[\s\d.\/]+|none|default))?$', config, re.M)
+            if m:
+                # Remove rsvd SSM range
+                value = m.group('value').replace('232.0.0.0/8', '')
+                existing[arg] = value.split()
 
-        value = ''
-        if has_command:
-            value = has_command.group('value')
-        existing[arg] = value
+        elif 'bfd' in arg and 'ip pim bfd' in config:
+            existing[arg] = 'enable'
+
     return existing
 
 
@@ -83,7 +112,7 @@ def apply_key_map(key_map, table):
     new_dict = {}
     for key, value in table.items():
         new_key = key_map.get(key)
-        if value:
+        if value is not None:
             new_dict[new_key] = value
     return new_dict
 
@@ -93,8 +122,21 @@ def get_commands(module, existing, proposed, candidate):
     proposed_commands = apply_key_map(PARAM_TO_COMMAND_KEYMAP, proposed)
 
     for key, value in proposed_commands.items():
-        command = '{0} {1}'.format(key, value)
-        commands.append(command)
+        command = ''
+        if key == 'ip pim ssm range':
+            if value == 'default':
+                # no cmd needs a value but the actual value does not matter
+                command = 'no ip pim ssm range none'
+            elif value == 'none':
+                command = 'ip pim ssm range none'
+            elif value:
+                command = 'ip pim ssm range {0}'.format(value)
+        elif key == 'ip pim bfd':
+            no_cmd = 'no ' if value == 'disable' else ''
+            command = no_cmd + key
+
+        if command:
+            commands.append(command)
 
     if commands:
         candidate.add(commands, parents=[])
@@ -102,28 +144,51 @@ def get_commands(module, existing, proposed, candidate):
 
 def main():
     argument_spec = dict(
-        ssm_range=dict(required=True, type='str'),
+        bfd=dict(required=False, type='str', choices=['enable', 'disable']),
+        ssm_range=dict(required=False, type='list', default=[]),
     )
 
     argument_spec.update(nxos_argument_spec)
 
     module = AnsibleModule(argument_spec=argument_spec,
                            supports_check_mode=True)
-
     warnings = list()
     check_args(module, warnings)
     result = {'changed': False, 'commands': [], 'warnings': warnings}
 
-    splitted_ssm_range = module.params['ssm_range'].split('.')
-    if len(splitted_ssm_range) != 4 and module.params['ssm_range'] != 'none':
-        module.fail_json(msg="Valid ssm_range values are multicast addresses "
-                             "or the keyword 'none'.")
+    params = module.params
+    args = [k for k in PARAM_TO_COMMAND_KEYMAP.keys() if params[k] is not None]
 
-    args = PARAM_TO_COMMAND_KEYMAP.keys()
+    # SSM syntax check
+    if 'ssm_range' in args:
+        for item in params['ssm_range']:
+            if re.search('none|default', item):
+                break
+            if len(item.split('.')) != 4:
+                module.fail_json(msg="Valid ssm_range values are multicast addresses "
+                                     "or the keyword 'none' or the keyword 'default'.")
 
     existing = get_existing(module, args)
-    proposed = dict((k, v) for k, v in module.params.items()
-                    if k in args and v != existing[k])
+    proposed_args = dict((k, v) for k, v in params.items() if k in args)
+
+    proposed = {}
+    for key, value in proposed_args.items():
+        if key == 'ssm_range':
+            if value and value[0] == 'default':
+                if existing.get(key):
+                    proposed[key] = 'default'
+            else:
+                v = sorted(set([str(i) for i in value]))
+                ex = sorted(set([str(i) for i in existing.get(key, [])]))
+                if v != ex:
+                    proposed[key] = ' '.join(str(s) for s in v)
+
+        elif key == 'bfd':
+            if value != existing.get('bfd', 'disable'):
+                proposed[key] = value
+
+        elif value != existing.get(key):
+            proposed[key] = value
 
     candidate = CustomNetworkConfig(indent=3)
     get_commands(module, existing, proposed, candidate)

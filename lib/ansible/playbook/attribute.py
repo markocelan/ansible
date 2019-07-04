@@ -19,13 +19,31 @@
 from __future__ import (absolute_import, division, print_function)
 __metaclass__ = type
 
-from copy import deepcopy
+from copy import copy, deepcopy
+
+
+_CONTAINERS = frozenset(('list', 'dict', 'set'))
 
 
 class Attribute:
 
-    def __init__(self, isa=None, private=False, default=None, required=False, listof=None, priority=0, class_type=None, always_post_validate=False,
-                 inherit=True, alias=None):
+    def __init__(
+        self,
+        isa=None,
+        private=False,
+        default=None,
+        required=False,
+        listof=None,
+        priority=0,
+        class_type=None,
+        always_post_validate=False,
+        inherit=True,
+        alias=None,
+        extend=False,
+        prepend=False,
+        static=False,
+    ):
+
         """
         :class:`Attribute` specifies constraints for attributes of objects which
         derive from playbook data.  The attributes of the object are basically
@@ -34,7 +52,8 @@ class Attribute:
         :kwarg isa: The type of the attribute.  Allowable values are a string
             representation of any yaml basic datatype, python class, or percent.
             (Enforced at post-validation time).
-        :kwarg private: (not used)
+        :kwarg private: Hides the attribute from being documented.
+                        TODO: it should also should prevent it from being user settable
         :kwarg default: Default value if unspecified in the YAML document.
         :kwarg required: Whether or not the YAML document must contain this field.
             If the attribute is None when post-validated, an error will be raised.
@@ -49,7 +68,7 @@ class Attribute:
             passed to the __init__ method of that class during post validation and
             the field will be an instance of that class.
         :kwarg always_post_validate: Controls whether a field should be post
-            validated or not (default: True).
+            validated or not (default: False).
         :kwarg inherit: A boolean value, which controls whether the object
             containing this field should attempt to inherit the value from its
             parent object if the local value is None.
@@ -67,11 +86,12 @@ class Attribute:
         self.always_post_validate = always_post_validate
         self.inherit = inherit
         self.alias = alias
+        self.extend = extend
+        self.prepend = prepend
+        self.static = static
 
-        if default is not None and self.isa in ('list', 'dict', 'set'):
-            self.default = deepcopy(default)
-        else:
-            self.default = default
+        if default is not None and self.isa in _CONTAINERS and not callable(default):
+            raise TypeError('defaults for FieldAttribute may not be mutable, please provide a callable instead')
 
     def __eq__(self, other):
         return other.priority == self.priority

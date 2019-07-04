@@ -1,26 +1,12 @@
 #!/usr/bin/python
 #
-# Created on Aug 25, 2016
 # @author: Gaurav Rastogi (grastogi@avinetworks.com)
 #          Eric Anderson (eanderson@avinetworks.com)
 # module_check: supported
 # Avi Version: 17.1.1
 #
-#
-# This file is part of Ansible
-#
-# Ansible is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# Ansible is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with Ansible.  If not, see <http://www.gnu.org/licenses/>.
+# Copyright: (c) 2017 Gaurav Rastogi, <grastogi@avinetworks.com>
+# GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 #
 
 ANSIBLE_METADATA = {'metadata_version': '1.1',
@@ -30,7 +16,7 @@ ANSIBLE_METADATA = {'metadata_version': '1.1',
 DOCUMENTATION = '''
 ---
 module: avi_cloudconnectoruser
-author: Gaurav Rastogi (grastogi@avinetworks.com)
+author: Gaurav Rastogi (@grastogi23) <grastogi@avinetworks.com>
 
 short_description: Module for setup of CloudConnectorUser Avi RESTful Object
 description:
@@ -43,11 +29,41 @@ options:
         description:
             - The state that should be applied on the entity.
         default: present
-        choices: ["absent","present"]
+        choices: ["absent", "present"]
+    avi_api_update_method:
+        description:
+            - Default method for object update is HTTP PUT.
+            - Setting to patch will override that behavior to use HTTP PATCH.
+        version_added: "2.5"
+        default: put
+        choices: ["put", "patch"]
+    avi_api_patch_op:
+        description:
+            - Patch operation to use when using avi_api_update_method as patch.
+        version_added: "2.5"
+        choices: ["add", "replace", "delete"]
+    azure_serviceprincipal:
+        description:
+            - Field introduced in 17.2.1.
+        version_added: "2.5"
+    azure_userpass:
+        description:
+            - Field introduced in 17.2.1.
+        version_added: "2.5"
+    gcp_credentials:
+        description:
+            - Credentials for google cloud platform.
+            - Field introduced in 18.2.1.
+        version_added: "2.9"
     name:
         description:
             - Name of the object.
         required: true
+    oci_credentials:
+        description:
+            - Credentials for oracle cloud infrastructure.
+            - Field introduced in 18.2.1,18.1.3.
+        version_added: "2.9"
     private_key:
         description:
             - Private_key of cloudconnectoruser.
@@ -57,6 +73,11 @@ options:
     tenant_ref:
         description:
             - It is a reference to an object of type tenant.
+    tencent_credentials:
+        description:
+            - Credentials for tencent cloud.
+            - Field introduced in 18.2.3.
+        version_added: "2.9"
     url:
         description:
             - Avi controller URL of the object.
@@ -67,20 +88,20 @@ extends_documentation_fragment:
     - avi
 '''
 
-
-EXAMPLES = '''
+EXAMPLES = """
   - name: Create a Cloud connector user that is used for integration into cloud platforms
     avi_cloudconnectoruser:
-      controller: ''
+      controller: '{{ controller }}'
       name: root
-      password: ''
+      password: '{{ password }}'
       private_key: |
         -----BEGIN RSA PRIVATE KEY-----
         -----END RSA PRIVATE KEY-----'
       public_key: 'ssh-rsa ...'
       tenant_ref: admin
-      username: ''
-'''
+      username: '{{ username }}'
+"""
+
 RETURN = '''
 obj:
     description: CloudConnectorUser (api/cloudconnectoruser) object
@@ -91,7 +112,7 @@ obj:
 from ansible.module_utils.basic import AnsibleModule
 try:
     from ansible.module_utils.network.avi.avi import (
-        avi_common_argument_spec, HAS_AVI, avi_ansible_api)
+        avi_common_argument_spec, avi_ansible_api, HAS_AVI)
 except ImportError:
     HAS_AVI = False
 
@@ -100,10 +121,18 @@ def main():
     argument_specs = dict(
         state=dict(default='present',
                    choices=['absent', 'present']),
+        avi_api_update_method=dict(default='put',
+                                   choices=['put', 'patch']),
+        avi_api_patch_op=dict(choices=['add', 'replace', 'delete']),
+        azure_serviceprincipal=dict(type='dict',),
+        azure_userpass=dict(type='dict',),
+        gcp_credentials=dict(type='dict',),
         name=dict(type='str', required=True),
+        oci_credentials=dict(type='dict',),
         private_key=dict(type='str', no_log=True,),
         public_key=dict(type='str',),
         tenant_ref=dict(type='str',),
+        tencent_credentials=dict(type='dict',),
         url=dict(type='str',),
         uuid=dict(type='str',),
     )
@@ -112,10 +141,11 @@ def main():
         argument_spec=argument_specs, supports_check_mode=True)
     if not HAS_AVI:
         return module.fail_json(msg=(
-            'Avi python API SDK (avisdk>=17.1) is not installed. '
+            'Avi python API SDK (avisdk>=17.1) or requests is not installed. '
             'For more details visit https://github.com/avinetworks/sdk.'))
     return avi_ansible_api(module, 'cloudconnectoruser',
                            set(['private_key']))
+
 
 if __name__ == '__main__':
     main()

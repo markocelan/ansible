@@ -1,7 +1,7 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 #
-# Copyright (c) 2017 F5 Networks Inc.
+# Copyright: (c) 2017, F5 Networks Inc.
 # GNU General Public License v3.0 (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 from __future__ import absolute_import, division, print_function
@@ -10,7 +10,7 @@ __metaclass__ = type
 
 ANSIBLE_METADATA = {'metadata_version': '1.1',
                     'status': ['preview'],
-                    'supported_by': 'community'}
+                    'supported_by': 'certified'}
 
 DOCUMENTATION = r'''
 ---
@@ -20,28 +20,30 @@ description:
   - The BIG-IP has an SNMP data collecting agent (DCA) that can query remote
     SNMP agents of various types, including the UC Davis agent (UCD) and the
     Windows 2000 Server agent (WIN2000).
-version_added: "2.5"
+version_added: 2.5
 options:
   name:
     description:
       - Monitor name.
+    type: str
     required: True
-    aliases:
-      - monitor
   description:
     description:
       - Specifies descriptive text that identifies the monitor.
+    type: str
   parent:
     description:
       - The parent template of this monitor template. Once this value has
         been set, it cannot be changed. By default, this value is the C(snmp_dca)
         parent on the C(Common) partition.
+    type: str
     default: "/Common/snmp_dca"
   interval:
     description:
       - Specifies, in seconds, the frequency at which the system issues the
         monitor check when either the resource is down or the status of the
         resource is unknown. When creating a new monitor, the default is C(10).
+    type: int
   timeout:
     description:
       - Specifies the number of seconds the target has in which to respond to
@@ -52,6 +54,7 @@ options:
         the system uses the interval from the parent monitor. Note that
         C(timeout) and C(time_until_up) combine to control when a resource is
         set to up.
+    type: int
   time_until_up:
     description:
       - Specifies the number of seconds to wait after a resource first responds
@@ -60,17 +63,20 @@ options:
         interval expires, the resource is marked 'up'. A value of 0, means
         that the resource is marked up immediately upon receipt of the first
         correct response. When creating a new monitor, the default is C(0).
+    type: int
   community:
     description:
       - Specifies the community name that the system must use to authenticate
         with the host server through SNMP. When creating a new monitor, the
         default value is C(public). Note that this value is case sensitive.
+    type: str
   version:
     description:
       - Specifies the version of SNMP that the host server uses. When creating
         a new monitor, the default is C(v1). When C(v1), specifies that the
         host server uses SNMP version 1. When C(v2c), specifies that the host
         server uses SNMP version 2c.
+    type: str
     choices:
       - v1
       - v2c
@@ -78,6 +84,7 @@ options:
     description:
       - Specifies the SNMP agent running on the monitored server. When creating
         a new monitor, the default is C(UCD) (UC-Davis).
+    type: str
     choices:
       - UCD
       - WIN2000
@@ -87,64 +94,80 @@ options:
       - Specifies the coefficient that the system uses to calculate the weight
         of the CPU threshold in the dynamic ratio load balancing algorithm.
         When creating a new monitor, the default is C(1.5).
+    type: str
   cpu_threshold:
     description:
       - Specifies the maximum acceptable CPU usage on the target server. When
         creating a new monitor, the default is C(80) percent.
+    type: int
   memory_coefficient:
     description:
       - Specifies the coefficient that the system uses to calculate the weight
         of the memory threshold in the dynamic ratio load balancing algorithm.
         When creating a new monitor, the default is C(1.0).
+    type: str
   memory_threshold:
     description:
       - Specifies the maximum acceptable memory usage on the target server.
         When creating a new monitor, the default is C(70) percent.
+    type: int
   disk_coefficient:
     description:
       - Specifies the coefficient that the system uses to calculate the weight
         of the disk threshold in the dynamic ratio load balancing algorithm.
         When creating a new monitor, the default is C(2.0).
+    type: str
   disk_threshold:
     description:
       - Specifies the maximum acceptable disk usage on the target server. When
         creating a new monitor, the default is C(90) percent.
+    type: int
   partition:
     description:
       - Device partition to manage resources on.
+    type: str
     default: Common
+  state:
+    description:
+      - When C(present), ensures that the monitor exists.
+      - When C(absent), ensures the monitor is removed.
+    type: str
+    choices:
+      - present
+      - absent
+    default: present
+    version_added: 2.5
 notes:
-  - Requires the f5-sdk Python package on the host. This is as easy as pip
-    install f5-sdk.
   - Requires BIG-IP software version >= 12
   - This module does not support the C(variables) option because this option
     is broken in the REST API and does not function correctly in C(tmsh); for
     example you cannot remove user-defined params. Therefore, there is no way
     to automatically configure it.
-requirements:
-  - f5-sdk >= 2.2.3
 extends_documentation_fragment: f5
 author:
   - Tim Rupp (@caphrim007)
+  - Wojciech Wypior (@wojtek0806)
 '''
 
 EXAMPLES = r'''
 - name: Create SNMP DCS monitor
   bigip_monitor_snmp_dca:
-    state: present
-    server: lb.mydomain.com
-    user: admin
-    password: secret
     name: my_monitor
+    state: present
+    provider:
+      server: lb.mydomain.com
+      user: admin
+      password: secret
   delegate_to: localhost
 
 - name: Remove TCP Echo Monitor
   bigip_monitor_snmp_dca:
-    state: absent
-    server: lb.mydomain.com
-    user: admin
-    password: secret
     name: my_monitor
+    state: absent
+    provider:
+      server: lb.mydomain.com
+      user: admin
+      password: secret
   delegate_to: localhost
 '''
 
@@ -152,8 +175,13 @@ RETURN = r'''
 parent:
   description: New parent template of the monitor.
   returned: changed
-  type: string
+  type: str
   sample: snmp_dca
+description:
+  description: The description of the monitor.
+  returned: changed
+  type: str
+  sample: Important Monitor
 interval:
   description: The new interval in which to run the monitor check.
   returned: changed
@@ -172,17 +200,17 @@ time_until_up:
 community:
   description: The new community for the monitor.
   returned: changed
-  type: string
+  type: str
   sample: foobar
 version:
   description: The new new SNMP version to be used by the monitor.
   returned: changed
-  type: string
+  type: str
   sample: v2c
 agent_type:
   description: The new agent type to be used by the monitor.
   returned: changed
-  type: string
+  type: str
   sample: UCD
 cpu_coefficient:
   description: The new CPU coefficient.
@@ -216,19 +244,25 @@ disk_threshold:
   sample: 34
 '''
 
-import os
-
-from ansible.module_utils.f5_utils import AnsibleF5Client
-from ansible.module_utils.f5_utils import AnsibleF5Parameters
-from ansible.module_utils.f5_utils import HAS_F5SDK
-from ansible.module_utils.f5_utils import F5ModuleError
-from ansible.module_utils.six import iteritems
-from collections import defaultdict
+from ansible.module_utils.basic import AnsibleModule
+from ansible.module_utils.basic import env_fallback
 
 try:
-    from ansible.module_utils.f5_utils import iControlUnexpectedHTTPError
+    from library.module_utils.network.f5.bigip import F5RestClient
+    from library.module_utils.network.f5.common import F5ModuleError
+    from library.module_utils.network.f5.common import AnsibleF5Parameters
+    from library.module_utils.network.f5.common import fq_name
+    from library.module_utils.network.f5.common import f5_argument_spec
+    from library.module_utils.network.f5.common import transform_name
+    from library.module_utils.network.f5.compare import cmp_str_with_none
 except ImportError:
-    HAS_F5SDK = False
+    from ansible.module_utils.network.f5.bigip import F5RestClient
+    from ansible.module_utils.network.f5.common import F5ModuleError
+    from ansible.module_utils.network.f5.common import AnsibleF5Parameters
+    from ansible.module_utils.network.f5.common import fq_name
+    from ansible.module_utils.network.f5.common import f5_argument_spec
+    from ansible.module_utils.network.f5.common import transform_name
+    from ansible.module_utils.network.f5.compare import cmp_str_with_none
 
 
 class Parameters(AnsibleF5Parameters):
@@ -241,76 +275,61 @@ class Parameters(AnsibleF5Parameters):
         'memoryCoefficient': 'memory_coefficient',
         'memoryThreshold': 'memory_threshold',
         'diskCoefficient': 'disk_coefficient',
-        'diskThreshold': 'disk_threshold'
+        'diskThreshold': 'disk_threshold',
     }
 
     api_attributes = [
-        'timeUntilUp', 'defaultsFrom', 'interval', 'timeout', 'destination', 'community',
-        'version', 'agentType', 'cpuCoefficient', 'cpuThreshold', 'memoryCoefficient',
-        'memoryThreshold', 'diskCoefficient', 'diskThreshold'
+        'timeUntilUp',
+        'defaultsFrom',
+        'interval',
+        'timeout',
+        'destination',
+        'community',
+        'version',
+        'agentType',
+        'cpuCoefficient',
+        'cpuThreshold',
+        'memoryCoefficient',
+        'memoryThreshold',
+        'diskCoefficient',
+        'diskThreshold',
+        'description',
     ]
 
     returnables = [
-        'parent', 'ip', 'interval', 'timeout', 'time_until_up', 'description', 'community',
-        'version', 'agent_type', 'cpu_coefficient', 'cpu_threshold', 'memory_coefficient',
-        'memory_threshold', 'disk_coefficient', 'disk_threshold'
+        'parent',
+        'ip',
+        'interval',
+        'timeout',
+        'time_until_up',
+        'description',
+        'community',
+        'version',
+        'agent_type',
+        'cpu_coefficient',
+        'cpu_threshold',
+        'memory_coefficient',
+        'memory_threshold',
+        'disk_coefficient',
+        'disk_threshold',
     ]
 
     updatables = [
-        'ip', 'interval', 'timeout', 'time_until_up', 'description', 'community',
-        'version', 'agent_type', 'cpu_coefficient', 'cpu_threshold', 'memory_coefficient',
-        'memory_threshold', 'disk_coefficient', 'disk_threshold'
+        'ip',
+        'interval',
+        'timeout',
+        'time_until_up',
+        'description',
+        'community',
+        'version',
+        'agent_type',
+        'cpu_coefficient',
+        'cpu_threshold',
+        'memory_coefficient',
+        'memory_threshold',
+        'disk_coefficient',
+        'disk_threshold',
     ]
-
-    def __init__(self, params=None):
-        self._values = defaultdict(lambda: None)
-        self._values['__warnings'] = []
-        if params:
-            self.update(params=params)
-
-    def update(self, params=None):
-        if params:
-            for k, v in iteritems(params):
-                if self.api_map is not None and k in self.api_map:
-                    map_key = self.api_map[k]
-                else:
-                    map_key = k
-
-                # Handle weird API parameters like `dns.proxy.__iter__` by
-                # using a map provided by the module developer
-                class_attr = getattr(type(self), map_key, None)
-                if isinstance(class_attr, property):
-                    # There is a mapped value for the api_map key
-                    if class_attr.fset is None:
-                        # If the mapped value does not have
-                        # an associated setter
-                        self._values[map_key] = v
-                    else:
-                        # The mapped value has a setter
-                        setattr(self, map_key, v)
-                else:
-                    # If the mapped value is not a @property
-                    self._values[map_key] = v
-
-    def to_return(self):
-        result = {}
-        try:
-            for returnable in self.returnables:
-                result[returnable] = getattr(self, returnable)
-            result = self._filter_params(result)
-            return result
-        except Exception:
-            return result
-
-    def api_params(self):
-        result = {}
-        for api_attribute in self.api_attributes:
-            if self.api_map is not None and api_attribute in self.api_map:
-                result[api_attribute] = getattr(self, self.api_map[api_attribute])
-            else:
-                result[api_attribute] = getattr(self, api_attribute)
-        result = self._filter_params(result)
-        return result
 
     @property
     def interval(self):
@@ -338,11 +357,7 @@ class Parameters(AnsibleF5Parameters):
     def parent(self):
         if self._values['parent'] is None:
             return None
-        if self._values['parent'].startswith('/'):
-            parent = os.path.basename(self._values['parent'])
-            result = '/{0}/{1}'.format(self.partition, parent)
-        else:
-            result = '/{0}/{1}'.format(self.partition, self._values['parent'])
+        result = fq_name(self.partition, self._values['parent'])
         return result
 
     @property
@@ -391,6 +406,44 @@ class Parameters(AnsibleF5Parameters):
         return 'snmp_dca'
 
 
+class ApiParameters(Parameters):
+    @property
+    def description(self):
+        if self._values['description'] in [None, 'none']:
+            return None
+        return self._values['description']
+
+
+class ModuleParameters(Parameters):
+    @property
+    def description(self):
+        if self._values['description'] is None:
+            return None
+        elif self._values['description'] in ['none', '']:
+            return ''
+        return self._values['description']
+
+
+class Changes(Parameters):
+    def to_return(self):
+        result = {}
+        try:
+            for returnable in self.returnables:
+                result[returnable] = getattr(self, returnable)
+            result = self._filter_params(result)
+        except Exception:
+            pass
+        return result
+
+
+class UsableChanges(Changes):
+    pass
+
+
+class ReportableChanges(Changes):
+    pass
+
+
 class Difference(object):
     def __init__(self, want, have=None):
         self.want = want
@@ -406,17 +459,10 @@ class Difference(object):
 
     @property
     def parent(self):
-        if self.want.parent != self.want.parent:
+        if self.want.parent != self.have.parent:
             raise F5ModuleError(
                 "The parent monitor cannot be changed"
             )
-
-    @property
-    def destination(self):
-        if self.want.ip is None:
-            return None
-        if self.want.destination != self.have.destination:
-            return self.want.destination
 
     @property
     def interval(self):
@@ -447,13 +493,18 @@ class Difference(object):
         except AttributeError:
             return attr1
 
+    @property
+    def description(self):
+        return cmp_str_with_none(self.want.description, self.have.description)
+
 
 class ModuleManager(object):
-    def __init__(self, client):
-        self.client = client
-        self.have = None
-        self.want = Parameters(self.client.module.params)
-        self.changes = Parameters()
+    def __init__(self, *args, **kwargs):
+        self.module = kwargs.get('module', None)
+        self.client = F5RestClient(**self.module.params)
+        self.want = ModuleParameters(params=self.module.params)
+        self.have = ApiParameters()
+        self.changes = UsableChanges()
 
     def _set_changed_options(self):
         changed = {}
@@ -461,7 +512,7 @@ class ModuleManager(object):
             if getattr(self.want, key) is not None:
                 changed[key] = getattr(self.want, key)
         if changed:
-            self.changes = Parameters(changed)
+            self.changes = UsableChanges(params=changed)
 
     def _update_changed_options(self):
         diff = Difference(self.want, self.have)
@@ -472,42 +523,45 @@ class ModuleManager(object):
             if change is None:
                 continue
             else:
-                changed[k] = change
+                if isinstance(change, dict):
+                    changed.update(change)
+                else:
+                    changed[k] = change
         if changed:
-            self.changes = Parameters(changed)
+            self.changes = UsableChanges(params=changed)
             return True
         return False
 
-    def _announce_deprecations(self):
-        warnings = []
-        if self.want:
-            warnings += self.want._values.get('__warnings', [])
-        if self.have:
-            warnings += self.have._values.get('__warnings', [])
-        for warning in warnings:
-            self.client.module.deprecate(
-                msg=warning['msg'],
-                version=warning['version']
-            )
+    def should_update(self):
+        result = self._update_changed_options()
+        if result:
+            return True
+        return False
 
     def exec_module(self):
         changed = False
         result = dict()
         state = self.want.state
 
-        try:
-            if state == "present":
-                changed = self.present()
-            elif state == "absent":
-                changed = self.absent()
-        except iControlUnexpectedHTTPError as e:
-            raise F5ModuleError(str(e))
+        if state == "present":
+            changed = self.present()
+        elif state == "absent":
+            changed = self.absent()
 
-        changes = self.changes.to_return()
+        reportable = ReportableChanges(params=self.changes.to_return())
+        changes = reportable.to_return()
         result.update(**changes)
         result.update(dict(changed=changed))
-        self._announce_deprecations()
+        self._announce_deprecations(result)
         return result
+
+    def _announce_deprecations(self, result):
+        warnings = result.pop('__warnings', [])
+        for warning in warnings:
+            self.client.module.deprecate(
+                msg=warning['msg'],
+                version=warning['version']
+            )
 
     def present(self):
         if self.exists():
@@ -515,9 +569,47 @@ class ModuleManager(object):
         else:
             return self.create()
 
+    def exists(self):
+        uri = "https://{0}:{1}/mgmt/tm/ltm/monitor/snmp-dca/{2}".format(
+            self.client.provider['server'],
+            self.client.provider['server_port'],
+            transform_name(self.want.partition, self.want.name)
+        )
+        resp = self.client.api.get(uri)
+        try:
+            response = resp.json()
+        except ValueError:
+            return False
+        if resp.status == 404 or 'code' in response and response['code'] == 404:
+            return False
+        return True
+
+    def update(self):
+        self.have = self.read_current_from_device()
+        if not self.should_update():
+            return False
+        if self.module.check_mode:
+            return True
+        self.update_on_device()
+        return True
+
+    def remove(self):
+        if self.module.check_mode:
+            return True
+        self.remove_from_device()
+        if self.exists():
+            raise F5ModuleError("Failed to delete the resource.")
+        return True
+
     def create(self):
         self._set_changed_options()
+        self._set_default_creation_values()
+        if self.module.check_mode:
+            return True
+        self.create_on_device()
+        return True
 
+    def _set_default_creation_values(self):
         if self.want.timeout is None:
             self.want.update({'timeout': 30})
         if self.want.interval is None:
@@ -543,92 +635,92 @@ class ModuleManager(object):
         if self.want.disk_threshold is None:
             self.want.update({'disk_threshold': '90'})
 
-        if self.client.check_mode:
-            return True
-        self.create_on_device()
-        return True
+    def create_on_device(self):
+        params = self.changes.api_params()
+        params['name'] = self.want.name
+        params['partition'] = self.want.partition
+        uri = "https://{0}:{1}/mgmt/tm/ltm/monitor/snmp-dca/".format(
+            self.client.provider['server'],
+            self.client.provider['server_port']
+        )
+        resp = self.client.api.post(uri, json=params)
+        try:
+            response = resp.json()
+        except ValueError as ex:
+            raise F5ModuleError(str(ex))
 
-    def should_update(self):
-        result = self._update_changed_options()
-        if result:
-            return True
-        return False
+        if 'code' in response and response['code'] in [400, 403]:
+            if 'message' in response:
+                raise F5ModuleError(response['message'])
+            else:
+                raise F5ModuleError(resp.content)
 
-    def update(self):
-        self.have = self.read_current_from_device()
-        if not self.should_update():
-            return False
-        if self.client.check_mode:
-            return True
-        self.update_on_device()
-        return True
+    def update_on_device(self):
+        params = self.changes.api_params()
+        uri = "https://{0}:{1}/mgmt/tm/ltm/monitor/snmp-dca/{2}".format(
+            self.client.provider['server'],
+            self.client.provider['server_port'],
+            transform_name(self.want.partition, self.want.name)
+        )
+        resp = self.client.api.patch(uri, json=params)
+        try:
+            response = resp.json()
+        except ValueError as ex:
+            raise F5ModuleError(str(ex))
+
+        if 'code' in response and response['code'] == 400:
+            if 'message' in response:
+                raise F5ModuleError(response['message'])
+            else:
+                raise F5ModuleError(resp.content)
 
     def absent(self):
         if self.exists():
             return self.remove()
         return False
 
-    def remove(self):
-        if self.client.check_mode:
+    def remove_from_device(self):
+        uri = "https://{0}:{1}/mgmt/tm/ltm/monitor/snmp-dca/{2}".format(
+            self.client.provider['server'],
+            self.client.provider['server_port'],
+            transform_name(self.want.partition, self.want.name)
+        )
+        resp = self.client.api.delete(uri)
+        if resp.status == 200:
             return True
-        self.remove_from_device()
-        if self.exists():
-            raise F5ModuleError("Failed to delete the monitor.")
-        return True
 
     def read_current_from_device(self):
-        resource = self.client.api.tm.ltm.monitor.snmp_dcas.snmp_dca.load(
-            name=self.want.name,
-            partition=self.want.partition
+        uri = "https://{0}:{1}/mgmt/tm/ltm/monitor/snmp-dca/{2}".format(
+            self.client.provider['server'],
+            self.client.provider['server_port'],
+            transform_name(self.want.partition, self.want.name)
         )
-        result = resource.attrs
-        return Parameters(result)
+        resp = self.client.api.get(uri)
+        try:
+            response = resp.json()
+        except ValueError as ex:
+            raise F5ModuleError(str(ex))
 
-    def exists(self):
-        result = self.client.api.tm.ltm.monitor.snmp_dcas.snmp_dca.exists(
-            name=self.want.name,
-            partition=self.want.partition
-        )
-        return result
-
-    def update_on_device(self):
-        params = self.want.api_params()
-        result = self.client.api.tm.ltm.monitor.snmp_dcas.snmp_dca.load(
-            name=self.want.name,
-            partition=self.want.partition
-        )
-        result.modify(**params)
-
-    def create_on_device(self):
-        params = self.want.api_params()
-        self.client.api.tm.ltm.monitor.snmp_dcas.snmp_dca.create(
-            name=self.want.name,
-            partition=self.want.partition,
-            **params
-        )
-
-    def remove_from_device(self):
-        result = self.client.api.tm.ltm.monitor.snmp_dcas.snmp_dca.load(
-            name=self.want.name,
-            partition=self.want.partition
-        )
-        if result:
-            result.delete()
+        if 'code' in response and response['code'] == 400:
+            if 'message' in response:
+                raise F5ModuleError(response['message'])
+            else:
+                raise F5ModuleError(resp.content)
+        return ApiParameters(params=response)
 
 
 class ArgumentSpec(object):
     def __init__(self):
         self.supports_check_mode = True
-        self.argument_spec = dict(
+        argument_spec = dict(
             name=dict(required=True),
             description=dict(),
-            parent=dict(),
-            ip=dict(),
+            parent=dict(default='/Common/snmp_dca'),
             interval=dict(type='int'),
             timeout=dict(type='int'),
             time_until_up=dict(type='int'),
             community=dict(),
-            version=dict(),
+            version=dict(choices=['v1', 'v2c']),
             agent_type=dict(
                 choices=['UCD', 'WIN2000', 'GENERIC']
             ),
@@ -637,41 +729,35 @@ class ArgumentSpec(object):
             memory_coefficient=dict(),
             memory_threshold=dict(type='int'),
             disk_coefficient=dict(),
-            disk_threshold=dict(type='int')
+            disk_threshold=dict(type='int'),
+            state=dict(
+                default='present',
+                choices=['present', 'absent']
+            ),
+            partition=dict(
+                default='Common',
+                fallback=(env_fallback, ['F5_PARTITION'])
+            )
         )
-        self.f5_product_name = 'bigip'
-
-
-def cleanup_tokens(client):
-    try:
-        resource = client.api.shared.authz.tokens_s.token.load(
-            name=client.api.icrs.token
-        )
-        resource.delete()
-    except Exception:
-        pass
+        self.argument_spec = {}
+        self.argument_spec.update(f5_argument_spec)
+        self.argument_spec.update(argument_spec)
 
 
 def main():
     spec = ArgumentSpec()
 
-    client = AnsibleF5Client(
+    module = AnsibleModule(
         argument_spec=spec.argument_spec,
         supports_check_mode=spec.supports_check_mode,
-        f5_product_name=spec.f5_product_name
     )
 
     try:
-        if not HAS_F5SDK:
-            raise F5ModuleError("The python f5-sdk module is required")
-
-        mm = ModuleManager(client)
+        mm = ModuleManager(module=module)
         results = mm.exec_module()
-        cleanup_tokens(client)
-        client.module.exit_json(**results)
-    except F5ModuleError as e:
-        cleanup_tokens(client)
-        client.module.fail_json(msg=str(e))
+        module.exit_json(**results)
+    except F5ModuleError as ex:
+        module.fail_json(msg=str(ex))
 
 
 if __name__ == '__main__':

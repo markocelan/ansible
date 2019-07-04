@@ -31,14 +31,14 @@ options:
     description:
       - If C(no), it will not use a proxy, even if one is defined in
         an environment variable on the target hosts.
-    default: 'yes'
     type: bool
+    default: 'yes'
   validate_certs:
     description:
       - If C(no), SSL certificates will not be validated. This should only be used
         on personally controlled sites using self-signed certificates.
-    default: 'yes'
     type: bool
+    default: 'yes'
   url_username:
     description:
       - The username for use in HTTP basic authentication.
@@ -53,8 +53,8 @@ options:
         responds to an initial request with a 401 status. Since some basic auth services do not properly
         send a 401, logins will fail. This option forces the sending of the Basic authentication header
         upon initial request.
-    default: 'no'
     type: bool
+    default: 'no'
   client_cert:
     description:
       - PEM formatted certificate chain file to be used for SSL client
@@ -68,7 +68,6 @@ options:
   state:
     description:
       - Apply feature state.
-    required: false
     choices: [ "present", "absent" ]
     default: present
   name:
@@ -81,17 +80,14 @@ options:
   template:
     description:
       - The template used to define the host.
-    required: false
-    default: None
+      - Template cannot be modified after object creation.
   check_command:
     description:
       - The command used to check if the host is alive.
-    required: false
     default: "hostalive"
   display_name:
     description:
       - The name used to display the host.
-    required: false
     default: if none is give it is the value of the <name> parameter
   ip:
     description:
@@ -100,14 +96,12 @@ options:
   variables:
     description:
       - List of variables.
-    required: false
-    default: None
 '''
 
 EXAMPLES = '''
 - name: Add host to icinga
-  icinga_host:
-    url: "https://icinga2.example.co,m"
+  icinga2_host:
+    url: "https://icinga2.example.com"
     url_username: "ansible"
     url_password: "a_secret"
     state: present
@@ -119,7 +113,7 @@ EXAMPLES = '''
 RETURN = '''
 name:
     description: The name used to create, modify or delete the host
-    type: string
+    type: str
     returned: always
 data:
     description: The data structure used for create, modify or delete of the host
@@ -140,13 +134,16 @@ from ansible.module_utils.urls import fetch_url, url_argument_spec
 class icinga2_api:
     module = None
 
+    def __init__(self, module):
+        self.module = module
+
     def call_url(self, path, data='', method='GET'):
         headers = {
             'Accept': 'application/json',
             'X-HTTP-Method-Override': method,
         }
         url = self.module.params.get("url") + "/" + path
-        rsp, info = fetch_url(module=self.module, url=url, data=data, headers=headers, method=method)
+        rsp, info = fetch_url(module=self.module, url=url, data=data, headers=headers, method=method, use_proxy=self.module.params['use_proxy'])
         body = ''
         if rsp:
             body = json.loads(rsp.read())
@@ -254,8 +251,7 @@ def main():
     variables = module.params["variables"]
 
     try:
-        icinga = icinga2_api()
-        icinga.module = module
+        icinga = icinga2_api(module=module)
         icinga.check_connection()
     except Exception as e:
         module.fail_json(msg="unable to connect to Icinga. Exception message: %s" % (e))
@@ -294,7 +290,12 @@ def main():
         elif icinga.diff(name, data):
             if module.check_mode:
                 module.exit_json(changed=False, name=name, data=data)
+
+            # Template attribute is not allowed in modification
+            del data['attrs']['templates']
+
             ret = icinga.modify(name, data)
+
             if ret['code'] == 200:
                 changed = True
             else:
